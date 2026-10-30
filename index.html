@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Châteaux et demeures d'Île-de-France</title>
+
+  <!-- Bibliothèque pour la carte interactive -->
+  <link rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Bibliothèque pour le graphique -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f2ed;
+      color: #283344;
+    }
+
+    header {
+      background: #253b54;
+      color: white;
+      text-align: center;
+      padding: 28px;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: auto;
+      padding: 24px;
+    }
+
+    .indicateurs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin: 24px 0;
+    }
+
+    .carte-indicateur, section {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px #00000012;
+    }
+
+    .carte-indicateur {
+      text-align: center;
+    }
+
+    .valeur {
+      font-size: 30px;
+      font-weight: bold;
+      color: #a47746;
+    }
+
+    #map {
+      height: 440px;
+      border-radius: 8px;
+    }
+
+    .graphique {
+      max-width: 700px;
+      margin: auto;
+    }
+
+    #statut {
+      color: #a04433;
+    }
+
+    @media (max-width: 650px) {
+      .indicateurs {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>Châteaux et demeures d'Île-de-France</h1>
+  <p>Tableau de bord SIG - TP2 ESTP</p>
+</header>
+
+<main>
+
+  <section>
+    <h2>Présentation de l'étude</h2>
+    <p>
+      Cette étude présente la répartition géographique
+      des châteaux et demeures en Île-de-France.
+      Les données proviennent du fichier géographique
+      utilisé dans le TP2 sur ArcGIS Pro.
+    </p>
+  </section>
+
+  <div class="indicateurs">
+    <div class="carte-indicateur">
+      <div class="valeur" id="total">--</div>
+      <p>Nombre total de sites</p>
+    </div>
+
+    <div class="carte-indicateur">
+      <div class="valeur" id="categories">--</div>
+      <p>Nombre de catégories</p>
+    </div>
+
+    <div class="carte-indicateur">
+      <div class="valeur" id="principale">--</div>
+      <p>Catégorie la plus représentée</p>
+    </div>
+  </div>
+
+  <section>
+    <h2>Carte interactive des châteaux</h2>
+    <p>Cliquez sur un site pour afficher ses informations.</p>
+    <div id="map"></div>
+  </section>
+
+  <section>
+    <h2>Répartition par catégorie</h2>
+    <div class="graphique">
+      <canvas id="graphique"></canvas>
+    </div>
+  </section>
+
+  <section>
+    <h2>Interprétation des résultats</h2>
+    <p id="interpretation">
+      Les résultats seront affichés après le chargement
+      des données géographiques.
+    </p>
+    <p id="statut"></p>
+  </section>
+
+</main>
+
+<script>
+  // Carte centrée sur l'Île-de-France
+  const map = L.map('map').setView([48.75, 2.35], 9);
+
+  L.tileLayer(
+    'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+    {
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    }
+  ).addTo(map);
+
+  // IMPORTANT :
+  // Remplacer "CATEGORIE" par le vrai nom du champ
+  // correspondant aux catégories dans ArcGIS Pro.
+  const champCategorie = "Categorie";
+
+  fetch('data/chateaux.geojson')
+    .then(reponse => {
+      if (!reponse.ok) {
+        throw new Error("Fichier GeoJSON introuvable");
+      }
+      return reponse.json();
+    })
+    .then(donnees => {
+
+      const sites = donnees.features || [];
+      const comptes = {};
+
+      sites.forEach(site => {
+        const categorie =
+          String(site.properties?.[champCategorie] ?? "Non renseigné");
+
+        comptes[categorie] = (comptes[categorie] || 0) + 1;
+      });
+
+      const categories = Object.keys(comptes);
+
+      const principale = categories.length
+        ? categories.reduce((a, b) =>
+            comptes[a] >= comptes[b] ? a : b)
+        : "Aucune";
+
+      // Indicateurs statistiques
+      document.getElementById('total').textContent =
+        sites.length;
+
+      document.getElementById('categories').textContent =
+        categories.length;
+
+      document.getElementById('principale').textContent =
+        principale;
+
+      // Affichage des sites sur la carte
+      const couche = L.geoJSON(donnees, {
+        pointToLayer: (feature, latlng) => {
+  const categorie = String(feature.properties?.Categorie || "");
+  let couleur = "#808080";
+
+  if (categorie.startsWith("1")) couleur = "#2563eb";
+  else if (categorie.startsWith("2")) couleur = "#16a34a";
+  else if (categorie.startsWith("3")) couleur = "#f97316";
+  else if (categorie.startsWith("4")) couleur = "#dc2626";
+
+  return L.circleMarker(latlng, {
+    radius: 7,
+    color: "#ffffff",
+    weight: 1,
+    fillColor: couleur,
+    fillOpacity: 0.9
+  });
+},
+        onEachFeature: (feature, layer) => {
+          const p = feature.properties || {};
+
+          const details = Object.entries(p)
+            .map(([cle, valeur]) =>
+              `${cle} : ${valeur ?? ""}`)
+            .join('\n');
+
+          const popup = document.createElement('pre');
+          popup.style.whiteSpace = 'pre-wrap';
+          popup.style.maxHeight = '200px';
+          popup.style.overflowY = 'auto';
+          popup.textContent = details;
+
+          layer.bindPopup(popup);
+        }
+      }).addTo(map);
+
+      if (couche.getBounds().isValid()) {
+        map.fitBounds(couche.getBounds());
+      }
+// Légende des catégories
+const legende = L.control({ position: "bottomright" });
+
+legende.onAdd = function () {
+  const div = L.DomUtil.create("div");
+  div.style.cssText =
+    "background:white; padding:12px; border-radius:8px;" +
+    "box-shadow:0 2px 8px #888; font-size:12px; line-height:24px;";
+
+  div.innerHTML = `
+    <strong>Catégories des sites</strong>
+    <div><span style="color:#2563eb">●</span> Intérêt local</div>
+    <div><span style="color:#16a34a">●</span> Intérêt supra-local</div>
+    <div><span style="color:#f97316">●</span> Intérêt régional</div>
+    <div><span style="color:#dc2626">●</span> Intérêt national ou international</div>
+  `;
+
+  return div;
+};
+
+legende.addTo(map);
+      // Graphique
+      new Chart(document.getElementById('graphique'), {
+        type: 'bar',
+        data: {
+          labels: categories,
+          datasets: [{
+            label: 'Nombre de sites',
+            data: categories.map(c => comptes[c]),
+            backgroundColor: '#a47746'
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+
+      // Interprétation automatique
+      document.getElementById('interpretation').textContent =
+        `Le territoire étudié comprend ${sites.length} sites ` +
+        `répartis en ${categories.length} catégories. ` +
+        `La catégorie la plus représentée est "${principale}".`;
+
+    })
+    .catch(erreur => {
+      document.getElementById('statut').textContent =
+        "Erreur : " + erreur.message +
+        ". Vérifiez le fichier GeoJSON et le serveur local.";
+    });
+</script>
+
+</body>
+</html>
